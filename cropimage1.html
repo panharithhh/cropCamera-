@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resizable Crop Camera</title>
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      overflow: hidden;
+    }
+
+    video {
+      width: 100%;
+      height: 100vh;
+      object-fit: cover;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    /* Crop box */
+    .overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 250px;
+      height: 150px;
+      transform: translate(-50%, -50%);
+      border: 4px solid white;
+      background: transparent;
+      z-index: 2;
+      cursor: move;
+      box-sizing: border-box;
+    }
+
+    /* Resize handles */
+    .handle {
+      width: 14px;
+      height: 14px;
+      background: white;
+      position: absolute;
+      border-radius: 50%;
+    }
+    .handle.nw { top: -7px; left: -7px; cursor: nwse-resize; }
+    .handle.ne { top: -7px; right: -7px; cursor: nesw-resize; }
+    .handle.sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
+    .handle.se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+
+    button {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 24px;
+      background: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      cursor: pointer;
+      z-index: 3;
+    }
+
+    #loader {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.8);
+      padding: 20px;
+      border-radius: 10px;
+      font-size: 20px;
+      color: white;
+      z-index: 4;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay playsinline muted></video>
+  <div class="overlay" id="overlay">
+    <div class="handle nw"></div>
+    <div class="handle ne"></div>
+    <div class="handle sw"></div>
+    <div class="handle se"></div>
+  </div>
+  <button id="capture">Capture</button>
+  <div id="loader">Processing...</div>
+
+  <script>
+    const video = document.getElementById("video");
+    const overlay = document.getElementById("overlay");
+    const captureBtn = document.getElementById("capture");
+    const loader = document.getElementById("loader");
+  
+    // ✅ Start camera
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" }, audio: false
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        alert("Camera error: " + err.message);
+        console.error(err);
+      }
+    }
+    startCamera();
+  
+    // --------------------
+    // Drag overlay (mouse + touch)
+    // --------------------
+    let isDragging = false, startX, startY, startLeft, startTop;
+  
+    function startDrag(x, y) {
+      isDragging = true;
+      startX = x;
+      startY = y;
+      startLeft = overlay.offsetLeft;
+      startTop = overlay.offsetTop;
+    }
+  
+    function doDrag(x, y) {
+      if (isDragging) {
+        overlay.style.left = startLeft + (x - startX) + "px";
+        overlay.style.top = startTop + (y - startY) + "px";
+      }
+    }
+  
+    overlay.addEventListener("mousedown", e => {
+      if (e.target.classList.contains("handle")) return;
+      startDrag(e.clientX, e.clientY);
+    });
+    document.addEventListener("mousemove", e => doDrag(e.clientX, e.clientY));
+    document.addEventListener("mouseup", () => isDragging = false);
+  
+    overlay.addEventListener("touchstart", e => {
+      if (e.target.classList.contains("handle")) return;
+      const t = e.touches[0];
+      startDrag(t.clientX, t.clientY);
+    });
+    document.addEventListener("touchmove", e => {
+      const t = e.touches[0];
+      doDrag(t.clientX, t.clientY);
+    });
+    document.addEventListener("touchend", () => isDragging = false);
+  
+    // --------------------
+    // Resize overlay (mouse + touch)
+    // --------------------
+    let isResizing = false, currentHandle, startWidth, startHeight;
+  
+    function startResize(x, y, handle) {
+      isResizing = true;
+      currentHandle = handle;
+      startX = x;
+      startY = y;
+      startWidth = overlay.offsetWidth;
+      startHeight = overlay.offsetHeight;
+      startLeft = overlay.offsetLeft;
+      startTop = overlay.offsetTop;
+    }
+  
+    function doResize(x, y) {
+      if (!isResizing) return;
+      let dx = x - startX;
+      let dy = y - startY;
+  
+      if (currentHandle.classList.contains("se")) {
+        overlay.style.width = startWidth + dx + "px";
+        overlay.style.height = startHeight + dy + "px";
+      } else if (currentHandle.classList.contains("sw")) {
+        overlay.style.width = startWidth - dx + "px";
+        overlay.style.height = startHeight + dy + "px";
+        overlay.style.left = startLeft + dx + "px";
+      } else if (currentHandle.classList.contains("ne")) {
+        overlay.style.width = startWidth + dx + "px";
+        overlay.style.height = startHeight - dy + "px";
+        overlay.style.top = startTop + dy + "px";
+      } else if (currentHandle.classList.contains("nw")) {
+        overlay.style.width = startWidth - dx + "px";
+        overlay.style.height = startHeight - dy + "px";
+        overlay.style.left = startLeft + dx + "px";
+        overlay.style.top = startTop + dy + "px";
+      }
+    }
+  
+    document.querySelectorAll(".handle").forEach(handle => {
+      // mouse
+      handle.addEventListener("mousedown", e => {
+        startResize(e.clientX, e.clientY, e.target);
+      });
+      // touch
+      handle.addEventListener("touchstart", e => {
+        const t = e.touches[0];
+        startResize(t.clientX, t.clientY, e.target);
+      });
+    });
+  
+    document.addEventListener("mousemove", e => doResize(e.clientX, e.clientY));
+    document.addEventListener("mouseup", () => isResizing = false);
+  
+    document.addEventListener("touchmove", e => {
+      const t = e.touches[0];
+      doResize(t.clientX, t.clientY);
+    });
+    document.addEventListener("touchend", () => isResizing = false);
+  
+    // --------------------
+    // Capture inside crop box
+    // --------------------
+    captureBtn.addEventListener("click", () => {
+      loader.style.display = "block";
+  
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+  
+      const rect = overlay.getBoundingClientRect();
+      const videoRect = video.getBoundingClientRect();
+  
+      const scaleX = video.videoWidth / videoRect.width;
+      const scaleY = video.videoHeight / videoRect.height;
+  
+      const cropX = (rect.left - videoRect.left) * scaleX;
+      const cropY = (rect.top - videoRect.top) * scaleY;
+      const cropWidth = rect.width * scaleX;
+      const cropHeight = rect.height * scaleY;
+  
+      canvas.width = cropWidth;
+      canvas.height = cropHeight;
+      ctx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+  
+      canvas.toBlob(async (blob) => {
+        const formData = new FormData();
+        formData.append("file", blob, "capture.png");
+  
+        // send to backend
+        const res = await fetch("/process-image", { method: "POST", body: formData });
+        const data = await res.json();
+  
+        loader.style.display = "none";
+        alert("Result: " + data.result);
+      }, "image/png");
+    });
+  </script>
